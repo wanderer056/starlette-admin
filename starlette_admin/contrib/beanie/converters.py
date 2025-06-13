@@ -2,9 +2,9 @@ import uuid
 from typing import Any, Dict, Sequence, Type, Union, get_args, get_origin
 
 from beanie import BackLink, Link, PydanticObjectId
-from pydantic import (  # type: ignore[attr-defined]
+from pydantic import (
     AnyUrl,
-    AwareDatetime,
+    AwareDatetime,  # type: ignore[attr-defined]
     BaseModel,
     EmailStr,
     FutureDate,
@@ -14,6 +14,8 @@ from pydantic import (  # type: ignore[attr-defined]
     PastDatetime,
     SecretStr,
 )
+
+from starlette_admin.contrib.beanie.helpers import is_link_type, is_list_of_links_type
 from starlette_admin.converters import StandardModelConverter, converts
 from starlette_admin.fields import (
     BaseField,
@@ -115,17 +117,39 @@ class BeanieModelConverter(StandardModelConverter):
             _fields.append(self.convert(*args, **kwargs))
         return CollectionField(name=name, fields=_fields, required=required)
 
+    def get_type_beanie(self, model_fields: Any, value: Any) -> Any:
+        field_type = model_fields[value].annotation
+        while get_origin(field_type) is Union:
+            field_type = get_args(field_type)[0]
+
+        return field_type
+
     def convert_fields_list(
         self, *, fields: Sequence[Any], model: Type[Any], **kwargs: Dict[str, Any]
     ) -> Sequence[BaseField]:
         converted_fields = []
         for value in fields:
-            converted_fields.append(
-                self.convert(
-                    name=value["name"],
-                    type=value["type"],
-                    required=value["required"],
-                    model=model,
+
+            if isinstance(value, BaseField):
+                converted_fields.append(value)
+                continue
+
+            field_type = self.get_type_beanie(model.model_fields, value)
+            if is_link_type(field_type) or is_list_of_links_type(field_type):
+                converted_fields.append(
+                    self.conv_link(
+                        name=value,
+                        type=field_type,
+                        required=model.model_fields[value].is_required(),
+                    )
                 )
-            )
+            else:
+                converted_fields.append(
+                    self.convert(
+                        name=value,
+                        type=field_type,
+                        required=model.model_fields[value].is_required(),
+                        model=model,
+                    )
+                )
         return converted_fields

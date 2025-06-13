@@ -15,16 +15,15 @@ from typing import (
 )
 
 import bson.errors
-import starlette_admin.fields as sa
 from beanie import Document, Link, PydanticObjectId
 from beanie.odm.operators.find import BaseFindOperator
 from beanie.operators import Or, RegEx, Text
 from pydantic import ValidationError
 from starlette.requests import Request
+
+import starlette_admin.fields as sa
 from starlette_admin._types import RequestAction
-from starlette_admin.contrib.beanie.converters import (
-    BeanieModelConverter,
-)
+from starlette_admin.contrib.beanie.converters import BeanieModelConverter
 from starlette_admin.contrib.beanie.helpers import (
     BeanieLogicalOperator,
     build_order_clauses,
@@ -100,27 +99,13 @@ class ModelView(BaseModelView, Generic[T]):
             field_list=self.exclude_fields_from_detail, document=document
         )
 
-        for name, field in document.model_fields.items():
-            field_type = field.annotation
-            while get_origin(field_type) is Union:
-                field_type = get_args(field_type)[0]
-            if is_link_type(field_type) or is_list_of_links_type(field_type):
-                self.link_fields.append(
-                    {"name": name, "type": field_type, "required": field.is_required()}
-                )
-            else:
-                self.field_infos.append(
-                    {"name": name, "type": field_type, "required": field.is_required()}
-                )
+        if not self.fields:
+            self.fields = document.model_fields.keys()  # type:ignore
+
         self.fields = list(
             (converter or BeanieModelConverter()).convert_fields_list(
-                fields=self.field_infos, model=self.document
+                fields=self.fields, model=self.document
             )
-        )
-
-        self.fields.extend(
-            BeanieModelConverter().conv_link(**link_field)
-            for link_field in self.link_fields
         )
 
         super().__init__()
