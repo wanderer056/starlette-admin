@@ -225,9 +225,9 @@ class ModelView(BaseModelView, Generic[T]):
         }
         try:
             doc = self.document(**data)
-        except ValidationError as ve:
-            raise pydantic_error_to_form_validation_errors(ve) from ve
-        return await doc.create()
+            return await doc.create()
+        except Exception as e:
+            self.handle_exception(e)
 
     async def edit(self, request: Request, pk: PydanticObjectId, data: dict) -> T:
         doc: Union[Document, None] = await self.document.get(pk)
@@ -255,8 +255,8 @@ class ModelView(BaseModelView, Generic[T]):
             validated_doc: T = self.document.model_validate(doc.model_dump())
             return await validated_doc.replace()
 
-        except ValidationError as ve:
-            raise pydantic_error_to_form_validation_errors(ve) from ve
+        except Exception as e:
+            self.handle_exception(e)
 
     async def delete(self, request: Request, pks: List[Any]) -> Optional[int]:
         cnt = 0
@@ -266,3 +266,8 @@ class ModelView(BaseModelView, Generic[T]):
                 await value.delete()
                 cnt += 1
         return cnt
+
+    def handle_exception(self, exc: Exception) -> None:
+        if isinstance(exc, ValidationError):
+            raise pydantic_error_to_form_validation_errors(exc) from exc
+        raise exc
